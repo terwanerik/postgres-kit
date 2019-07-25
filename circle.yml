@@ -1,22 +1,16 @@
 version: 2
 
 jobs:
-  11-bionic:
-    docker:
-      - image: swift:5.0-bionic
-      - image: circleci/postgres:11
-        name: psql
-        environment:
-          POSTGRES_USER: vapor_username
-          POSTGRES_DB: vapor_database
-          POSTGRES_PASSWORD: vapor_password
+  macos:
+    macos:
+      xcode: "9.3"
     steps:
       - checkout
       - run: swift build
       - run: swift test
-  10-bionic:
+  10-linux:
     docker:
-      - image: swift:5.0-bionic
+      - image: codevapor/swift:4.1
       - image: circleci/postgres:10
         name: psql
         environment:
@@ -25,11 +19,54 @@ jobs:
           POSTGRES_PASSWORD: vapor_password
     steps:
       - checkout
-      - run: swift build
-      - run: swift test
-  9-bionic:
+      - run: 
+          name: Compile code
+          command: swift build
+      - run: 
+          name: Run unit tests
+          command: swift test
+  10-linux-ssl:
     docker:
-      - image: swift:5.0-bionic
+      - image: codevapor/swift:4.1
+      - image: scenecheck/postgres-ssl:latest
+        name: psql
+        environment:
+          POSTGRES_USER: vapor_username
+          POSTGRES_DB: vapor_database
+          POSTGRES_PASSWORD: vapor_password
+    steps:
+      - checkout
+      - run: 
+          name: Compile code
+          command: swift build
+      - run: 
+          name: Run unit tests
+          command: swift test -Xswiftc -DTEST_USE_UNVERIFIED_TLS
+  10-linux-fluent:
+    docker:
+      - image: codevapor/swift:4.1
+      - image: circleci/postgres:10
+        name: psql
+        environment:
+          POSTGRES_USER: vapor_username
+          POSTGRES_DB: vapor_database
+          POSTGRES_PASSWORD: vapor_password
+    steps:
+      - run:
+          name: Clone Fluent PostgreSQL
+          command: git clone -b 1 https://github.com/vapor/fluent-postgresql.git
+          working_directory: ~/
+      - run:
+          name: Switch Fluent PostgreSQL to this PostgreSQL revision
+          command: swift package edit PostgreSQL --revision $CIRCLE_SHA1
+          working_directory: ~/fluent-postgresql
+      - run:
+          name: Run Fluent PostgreSQL unit tests
+          command: swift test
+          working_directory: ~/fluent-postgresql
+  9-linux:
+    docker:
+      - image: codevapor/swift:4.1
       - image: circleci/postgres:9
         name: psql
         environment:
@@ -38,18 +75,46 @@ jobs:
           POSTGRES_PASSWORD: vapor_password
     steps:
       - checkout
-      - run: swift build
-      - run: swift test
+      - run: 
+          name: Compile code
+          command: swift build
+      - run: 
+          name: Run unit tests
+          command: swift test -Xswiftc -DTEST_NO_GENERATED_AS_IDENTITY
+  9-linux-fluent:
+    docker:
+      - image: codevapor/swift:4.1
+      - image: circleci/postgres:9
+        name: psql
+        environment:
+          POSTGRES_USER: vapor_username
+          POSTGRES_DB: vapor_database
+          POSTGRES_PASSWORD: vapor_password
+    steps:
+      - run:
+          name: Clone Fluent PostgreSQL
+          command: git clone -b 1 https://github.com/vapor/fluent-postgresql.git
+          working_directory: ~/
+      - run:
+          name: Switch Fluent PostgreSQL to this PostgreSQL revision
+          command: swift package edit PostgreSQL --revision $CIRCLE_SHA1
+          working_directory: ~/fluent-postgresql
+      - run:
+          name: Run Fluent PostgreSQL unit tests
+          command: swift test
+          working_directory: ~/fluent-postgresql
   linux-release:
     docker:
-      - image: swift:5.0-bionic
+      - image: codevapor/swift:4.1
     steps:
       - checkout
-      - run: swift build -c release
+      - run: 
+          name: Compile code with optimizations
+          command: swift build -c release
   linux-performance:
     docker:
-      - image: swift:5.0-bionic
-      - image: circleci/postgres:11
+      - image: codevapor/swift:4.1
+      - image: circleci/postgres:9
         name: psql
         environment:
           POSTGRES_USER: vapor_username
@@ -57,13 +122,19 @@ jobs:
           POSTGRES_PASSWORD: vapor_password
     steps:
       - checkout
-      - run: swift test -c release
+      - run:
+          name: swift test
+          command: swift test -c release -Xswiftc -enable-testing --filter "PostgreSQLTests.PerformanceTests"
 workflows:
   version: 2
   tests:
     jobs:
-      - 11-bionic
-      - 10-bionic
-      # - 9-bionic
+      - 10-linux
+      - 10-linux-ssl
+      - 10-linux-fluent
+      - 9-linux
+      - 9-linux-fluent
       - linux-release
-      - linux-performance
+notify:
+  webhooks:
+    - url: https://bot-gh.vapor.codes/circle/result
